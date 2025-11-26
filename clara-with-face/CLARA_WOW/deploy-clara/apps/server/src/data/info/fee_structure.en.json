@@ -1,0 +1,46 @@
+{
+  "department_names": {
+    "CSE": "Computer Science Engineering",
+    "ECE": "Electronics and Communication Engineering",
+    "ISE": "Information Science Engineering",
+    "MECH": "Mechanical Engineering",
+    "CV": "Civil Engineering",
+    "CSE_AML": "Computer Science Engineering - Artificial Intelligence and Machine Learning",
+    "CSE_DS": "Computer Science Engineering - Data Science",
+    "MBA": "Master of Business Administration"
+  },
+  "year_names": {
+    "second_year_2024_batch": "Second Year (2024 Batch)",
+    "third_year_2023_batch": "Third Year (2023 Batch)",
+    "fourth_year_2022_batch": "Fourth Year (2022 Batch)"
+  },
+  "quota_names": {
+    "CET": "CET quota",
+    "COMED_K": "COMED-K quota"
+  },
+  "fee_components": {
+    "college_fees": "college fees",
+    "skill_development": "skill development fee",
+    "vtu_fees": "VTU fees",
+    "exam_fees": "examination fees",
+    "dept_activities_books": "department activities and books fee",
+    "dept_activities": "department activities fee",
+    "books_fee": "books fee",
+    "alumini_fee": "alumni fee",
+    "graduation_day_fee": "graduation day fee",
+    "convocation_fee": "convocation fee"
+  },
+  "templates": {
+    "department_fee": "For {deptName} students in {yearName} under {quotaName}, the fee structure includes {componentsText}, resulting in a total fee of ₹{total}. Payment deadlines are {deadline57} for Semesters 5 and 7, and {deadline3} for Semester 3. Payments can be made through {paymentModes}. For any fee-related queries, please contact {contactEmail}.",
+    "hostel_fee": "For girls hostel accommodation, the annual lodging fee is ₹{lodging}, with a refundable mess deposit of ₹{deposit}. The approximate mess charges are ₹{monthly} per month, totaling approximately ₹{annually} per annum, with {gst} GST applicable. {note}. For boys hostel, please contact the accounts office for current rates.",
+    "transport_fee": "College bus transport fees are ₹{city} annually for students traveling from Bangalore city, and ₹{yelahanka} annually for students within Yelahanka limits. These fees are payable {frequency} and cover daily pickup and drop services.",
+    "general_fee": "For the academic year {academicYear}, Sai Vidya Institute of Technology offers various fee structures based on the year of study, branch, and admission quota. For second year students (2024 batch) under CET quota, the total fees range from ₹{minFee} to ₹{maxFee} depending on the branch. Payment deadlines are {deadline57} for Semesters 5 and 7, and {deadline3} for Semester 3. Accepted payment modes include {paymentModes}. For girls hostel, the annual lodging fee is ₹{hostelLodging} with additional mess charges. College bus transport costs ₹{transportCity} annually from Bangalore city or ₹{transportYelahanka} from Yelahanka limits. For specific fee details based on your branch, year, and quota, or for any fee-related queries, please contact {contactEmail}."
+  },
+  "common_phrases": {
+    "total_fee": "total fee",
+    "payment_deadlines": "Payment deadlines",
+    "payment_modes": "Payments can be made through",
+    "contact_for_queries": "For any fee-related queries, please contact"
+  }
+}
+
