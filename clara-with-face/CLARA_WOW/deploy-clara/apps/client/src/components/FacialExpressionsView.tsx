@@ -11,7 +11,7 @@ interface FacialExpressionsViewProps {
   amplitude: number; // 0.0 to 1.0 (audio amplitude for lipsync)
   isListening: boolean; // Whether Clara is listening/connected
   locationCard?: { location: Location } | null; // Optional location card to display
-  messages?: Array<{ sender: string; text: string; isFinal?: boolean; timestamp?: string }>; // Messages to display
+  messages?: Array<{ sender: string; text: string; isFinal?: boolean; timestamp?: string; language?: string }>; // Messages to display
   onMicClick?: () => void; // Mic button click handler
   isRecording?: boolean; // Whether currently recording
   onCloseLocationCard?: () => void; // Handler to close location card
@@ -339,6 +339,21 @@ const FacialExpressionsView: React.FC<FacialExpressionsViewProps> = ({
   
   const currentMessage = getCurrentMessage();
 
+  // Language display helper
+  const getLanguageTag = (lang?: string) => {
+    if (!lang || lang === 'en') return null;
+    const languageNames: Record<string, string> = {
+      'kn': 'ಕನ್ನಡದಲ್ಲಿ ಪ್ರತಿಕ್ರಿಯಿಸುತ್ತಿದೆ',
+      'ta': 'தமிழில் பதில் கொடுக்கப்படுகிறது',
+      'te': 'తెలుగులో ప్రతిస్పందిస్తోంది',
+      'hi': 'हिंदी में जवाब दे रहा है',
+      'ml': 'മലയാളത്തിൽ പ്രതികരിക്കുന്നു',
+      'mr': 'मराठीत प्रतिसाद देत आहे',
+      'en': 'Responding in English'
+    };
+    return languageNames[lang] || `Responding in ${lang}`;
+  };
+
   return (
     <div className="facial-expressions-container" style={{
       position: 'fixed',
@@ -427,6 +442,27 @@ const FacialExpressionsView: React.FC<FacialExpressionsViewProps> = ({
           alignItems: 'center',
           zIndex: 50,
         }}>
+          {/* Language Tag - Show above Clara's message */}
+          {currentMessage.sender === 'clara' && currentMessage.language && currentMessage.language !== 'en' && (
+            <div style={{
+              position: 'absolute',
+              top: '-28px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              backgroundColor: 'rgba(34, 197, 94, 0.15)',
+              backdropFilter: 'blur(10px)',
+              padding: '4px 12px',
+              borderRadius: '12px',
+              fontSize: '11px',
+              fontWeight: '500',
+              color: '#22c55e',
+              border: '1px solid rgba(34, 197, 94, 0.3)',
+              whiteSpace: 'nowrap',
+              zIndex: 51,
+            }}>
+              {getLanguageTag(currentMessage.language)}
+            </div>
+          )}
           <div
             style={{
               backgroundColor: currentMessage.sender === 'user' 

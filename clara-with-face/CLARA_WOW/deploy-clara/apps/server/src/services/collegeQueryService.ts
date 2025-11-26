@@ -756,6 +756,41 @@ export function processCollegeQuery(query: string): QueryResult {
     'career', 'hiring', 'recruitment', 'package', 'salary', 'opportunity'
   ];
   
+  // Multilingual college/institute keywords for general college information queries
+  // Expanded with more variations for better detection across all languages
+  const collegeKeywords = [
+    // English
+    'college', 'institute', 'institution', 'university', 'saividya', 'svit',
+    'about college', 'college information', 'college info', 'tell me about college',
+    'college details', 'college overview', 'about the college', 'about this college',
+    'tell about college', 'college details', 'college info', 'information about college',
+    // Kannada - expanded variations
+    'ಕಾಲೇಜು', 'ಕಾಲೇಜ್', 'ಕಾಲೇಜಿನ', 'ಕಾಲೇಜಿನ ಬಗ್ಗೆ', 'ಕಾಲೇಜಿನ ಮಾಹಿತಿ', 
+    'ಕಾಲೇಜಿನ ವಿವರ', 'ಕಾಲೇಜ್ ಬಗ್ಗೆ', 'ಕಾಲೇಜ್ ಮಾಹಿತಿ', 'ಕಾಲೇಜ್ ವಿವರ',
+    'ಕಾಲೇಜಿನ ಬಗ್ಗೆ ತಿಳಿಸಿ', 'ಕಾಲೇಜಿನ ಬಗ್ಗೆ ಹೇಳಿ', 'ಕಾಲೇಜಿನ ಬಗ್ಗೆ ನೀಡಿ',
+    'ಕಾಲೇಜ್ ಬಗ್ಗೆ ತಿಳಿಸಿ', 'ಕಾಲೇಜ್ ಬಗ್ಗೆ ಹೇಳಿ', 'ಕಾಲೇಜ್ ಬಗ್ಗೆ ನೀಡಿ',
+    // Tamil - expanded variations
+    'கல்லூரி', 'கல்லூரி பற்றி', 'கல்லூரி தகவல்', 'கல்லூரி விவரங்கள்',
+    'கல்லூரி பற்றி சொல்', 'கல்லூரி பற்றி தெரிவி', 'கல்லூரி பற்றி கூறு',
+    'கல்லூரி பற்றி சொல்லுங்கள்', 'கல்லூரி பற்றி தெரிவியுங்கள்', 'கல்லூரி தகவல் தரவும்',
+    'கல்லூரி விவரம்', 'கல்லூரி பற்றிய தகவல்', 'கல்லூரி பற்றிய விவரம்',
+    // Telugu - expanded variations
+    'కళాశాల', 'కళాశాల గురించి', 'కళాశాల సమాచారం', 'కళాశాల వివరాలు',
+    'కళాశాల గురించి చెప్పండి', 'కళాశాల గురించి తెలపండి', 'కళాశాల గురించి చెప్పు',
+    'కళాశాల సమాచారం ఇవ్వండి', 'కళాశాల వివరాలు తెలపండి', 'కళాశాల గురించి తెలియజేయండి',
+    'కళాశాల సమాచారం', 'కళాశాల వివరాలు', 'కళాశాల గురించి',
+    // Hindi - expanded variations
+    'कॉलेज', 'कॉलेज के बारे में', 'कॉलेज की जानकारी', 'कॉलेज के बारे में बताओ',
+    'कॉलेज की जानकारी दो', 'कॉलेज के विवरण', 'कॉलेज के बारे में जानकारी',
+    'कॉलेज के बारे में बताइए', 'कॉलेज की जानकारी दीजिए', 'कॉलेज के बारे में जानकारी दो',
+    'कॉलेज बताओ', 'कॉलेज जानकारी', 'कॉलेज विवरण', 'कॉलेज के बारे में',
+    // Malayalam - expanded variations
+    'കോളേജ്', 'കോളേജിനെ കുറിച്ച്', 'കോളേജ് വിവരം', 'കോളേജ് വിവരങ്ങൾ',
+    'കോളേജിനെ കുറിച്ച് പറയുക', 'കോളേജ് വിവരം നൽകുക', 'കോളേജിനെ കുറിച്ച് പറയൂ',
+    'കോളേജ് വിവരം തരൂ', 'കോളേജിനെ കുറിച്ച് അറിയിക്കൂ', 'കോളേജ് വിവരങ്ങൾ നൽകൂ',
+    'കോളേജ് വിവരം', 'കോളേജ് വിവരങ്ങൾ', 'കോളേജിനെ കുറിച്ച്'
+  ];
+  
   // Check if query contains staff name keywords (check in both normalized and original query)
   const queryForKeywordCheck = query.toLowerCase();
   const hasStaffKeyword = staffKeywords.some(keyword => 
@@ -879,32 +914,6 @@ export function processCollegeQuery(query: string): QueryResult {
     }
   }
   
-  // Check for fee queries (including multilingual keywords)
-  const hasFeeKeyword = feeKeywordsInQuery.some(keyword => {
-    if (/[\u0900-\u097F\u0C00-\u0C7F\u0C80-\u0CFF\u0B80-\u0BFF\u0D00-\u0D7F]/.test(keyword)) {
-      // For Unicode keywords, check in original query
-      return query.includes(keyword);
-    }
-    return normalizedQuery.includes(keyword.toLowerCase()) ||
-           query.toLowerCase().includes(keyword.toLowerCase());
-  });
-  
-  const hasFeeTransliterated = /fee|fees|ph[iī]s|ph[iī]su/i.test(query) ||
-                                query.includes('ಫೀ') || query.includes('फी') ||
-                                query.includes('கட்டண') || query.includes('ఫీ') ||
-                                query.includes('ഫീ');
-  
-  if (hasFeeKeyword || hasFeeTransliterated) {
-    console.log(`[processCollegeQuery] Fee query detected (hasFeeKeyword: ${hasFeeKeyword}, hasFeeTransliterated: ${hasFeeTransliterated}), calling formatFeeInfo with language: ${detectedLanguage}`);
-    const feeAnswer = formatFeeInfo(query, detectedLanguage);
-    console.log(`[processCollegeQuery] Fee answer length: ${feeAnswer.length}, first 100 chars: ${feeAnswer.substring(0, 100)}`);
-    return {
-      answer: feeAnswer,
-      type: 'fee',
-      language: detectedLanguage
-    };
-  }
-  
   // Check for placement queries
   const hasPlacementKeyword = placementKeywords.some(keyword => 
     normalizedQuery.includes(keyword) || queryForKeywordCheck.includes(keyword)
@@ -926,27 +935,138 @@ export function processCollegeQuery(query: string): QueryResult {
     };
   }
   
-  // Check for general college information
-  if (normalizedQuery.includes('college') || normalizedQuery.includes('institute') || 
-      normalizedQuery.includes('saividya') || normalizedQuery.includes('svit') ||
-      normalizedQuery.includes('established') || normalizedQuery.includes('year') ||
-      normalizedQuery.includes('vtu') || normalizedQuery.includes('aicte') ||
-      normalizedQuery.includes('naac') || normalizedQuery.includes('nba') ||
-      normalizedQuery.includes('bangalore')) {
-    const collegeDescription = `${COLLEGE_INFO.name} (${COLLEGE_INFO.location}), established in ${COLLEGE_INFO.establishedYear}, is a ${COLLEGE_INFO.affiliation}-affiliated, ${COLLEGE_INFO.approval}-approved engineering college with ${COLLEGE_INFO.accreditation.naac} and ${COLLEGE_INFO.accreditation.nba} accreditation, ${COLLEGE_INFO.founderDescription}. The college offers various engineering programs including Computer Science Engineering, Mechanical Engineering, Civil Engineering, Electronics and Communication Engineering, and Information Science Engineering. ${COLLEGE_INFO.placements.description}`;
+  // Check for general college information (BEFORE fee check - prioritize general info)
+  // Check for multilingual college keywords - improved detection for all languages
+  const hasCollegeKeyword = collegeKeywords.some(keyword => {
+    // Check if keyword contains Unicode characters (Indian languages)
+    const hasUnicode = /[\u0900-\u097F\u0C00-\u0C7F\u0C80-\u0CFF\u0B80-\u0BFF\u0D00-\u0D7F]/.test(keyword);
     
-    const translations: Record<string, string> = {
-      hi: `${COLLEGE_INFO.name} (${COLLEGE_INFO.location}), ${COLLEGE_INFO.establishedYear} में स्थापित, ${COLLEGE_INFO.affiliation} से संबद्ध, ${COLLEGE_INFO.approval}-अनुमोदित इंजीनियरिंग कॉलेज है जिसमें ${COLLEGE_INFO.accreditation.naac} और ${COLLEGE_INFO.accreditation.nba} मान्यता है, ${COLLEGE_INFO.founderDescription}. कॉलेज विभिन्न इंजीनियरिंग कार्यक्रम प्रदान करता है जिसमें कंप्यूटर साइंस इंजीनियरिंग, मैकेनिकल इंजीनियरिंग, सिविल इंजीनियरिंग, इलेक्ट्रॉनिक्स और कम्युनिकेशन इंजीनियरिंग, और इंफॉर्मेशन साइंस इंजीनियरिंग शामिल हैं। ${COLLEGE_INFO.placements.description}`,
-      te: `${COLLEGE_INFO.name} (${COLLEGE_INFO.location}), ${COLLEGE_INFO.establishedYear}లో స్థాపించబడినది, ${COLLEGE_INFO.affiliation}-అనుబంధిత, ${COLLEGE_INFO.approval}-అనుమోదించబడిన ఇంజనీరింగ్ కళాశాల ${COLLEGE_INFO.accreditation.naac} మరియు ${COLLEGE_INFO.accreditation.nba} అక్రెడిటేషన్ కలిగి ఉంది, ${COLLEGE_INFO.founderDescription}. కళాశాల వివిధ ఇంజనీరింగ్ కార్యక్రమాలను అందిస్తుంది వీటిలో కంప్యూటర్ సైన్స్ ఇంజనీరింగ్, మెకానికల్ ఇంజనీరింగ్, సివిల్ ఇంజనీరింగ్, ఎలక్ట్రానిక్స్ మరియు కమ్యూనికేషన్ ఇంజనీరింగ్, మరియు ఇన్ఫర్మేషన్ సైన్స్ ఇంజనీరింగ్ ఉన్నాయి. ${COLLEGE_INFO.placements.description}`,
-      kn: `${COLLEGE_INFO.name} (${COLLEGE_INFO.location}), ${COLLEGE_INFO.establishedYear}ರಲ್ಲಿ ಸ್ಥಾಪಿಸಲ್ಪಟ್ಟಿದೆ, ${COLLEGE_INFO.affiliation}-ಸಂಬದ್ಧ, ${COLLEGE_INFO.approval}-ಅನುಮೋದಿತ ಇಂಜಿನಿಯರಿಂಗ್ ಕಾಲೇಜು ${COLLEGE_INFO.accreditation.naac} ಮತ್ತು ${COLLEGE_INFO.accreditation.nba} ಪ್ರಮಾಣೀಕರಣವನ್ನು ಹೊಂದಿದೆ, ${COLLEGE_INFO.founderDescription}. ಕಾಲೇಜು ವಿವಿಧ ಇಂಜಿನಿಯರಿಂಗ್ ಕಾರ್ಯಕ್ರಮಗಳನ್ನು ನೀಡುತ್ತದೆ ಇದರಲ್ಲಿ ಕಂಪ್ಯೂಟರ್ ಸೈನ್ಸ್ ಇಂಜಿನಿಯರಿಂಗ್, ಮೆಕ್ಯಾನಿಕಲ್ ಇಂಜಿನಿಯರಿಂಗ್, ಸಿವಿಲ್ ಇಂಜಿನಿಯರಿಂಗ್, ಎಲೆಕ್ಟ್ರಾನಿಕ್ಸ್ ಮತ್ತು ಕಮ್ಯುನಿಕೇಷನ್ ಇಂಜಿನಿಯರಿಂಗ್, ಮತ್ತು ಇನ್ಫರ್ಮೇಷನ್ ಸೈನ್ಸ್ ಇಂಜಿನಿಯರಿಂಗ್ ಸೇರಿವೆ. ${COLLEGE_INFO.placements.description}`,
-      ta: `${COLLEGE_INFO.name} (${COLLEGE_INFO.location}), ${COLLEGE_INFO.establishedYear}இல் நிறுவப்பட்டது, ${COLLEGE_INFO.affiliation}-இணைக்கப்பட்ட, ${COLLEGE_INFO.approval}-அனுமதிக்கப்பட்ட பொறியியல் கல்லூரி ${COLLEGE_INFO.accreditation.naac} மற்றும் ${COLLEGE_INFO.accreditation.nba} அங்கீகாரத்துடன், ${COLLEGE_INFO.founderDescription}. கல்லூரி பல்வேறு பொறியியல் திட்டங்களை வழங்குகிறது இதில் கணினி அறிவியல் பொறியியல், இயந்திர பொறியியல், சிவில் பொறியியல், மின்னணு மற்றும் தகவல்தொடர்பு பொறியியல், மற்றும் தகவல் அறிவியல் பொறியியல் அடங்கும். ${COLLEGE_INFO.placements.description}`,
-      ml: `${COLLEGE_INFO.name} (${COLLEGE_INFO.location}), ${COLLEGE_INFO.establishedYear} ൽ സ്ഥാപിച്ചത്, ${COLLEGE_INFO.affiliation}-ലിങ്ക് ചെയ്ത, ${COLLEGE_INFO.approval}-അനുവദിച്ച എഞ്ചിനീയറിംഗ് കോളേജ് ${COLLEGE_INFO.accreditation.naac} കൂടാതെ ${COLLEGE_INFO.accreditation.nba} അക്രെഡിറ്റേഷൻ, ${COLLEGE_INFO.founderDescription}. കോളേജ് വിവിധ എഞ്ചിനീയറിംഗ് പ്രോഗ്രാമുകൾ വാഗ്ദാനം ചെയ്യുന്നു ഇതിൽ കമ്പ്യൂട്ടർ സയൻസ് എഞ്ചിനീയറിംഗ്, മെക്കാനിക്കൽ എഞ്ചിനീയറിംഗ്, സിവിൽ എഞ്ചിനീയറിംഗ്, ഇലക്ട്രോണിക്സ് ആൻഡ് കമ്യൂണിക്കേഷൻ എഞ്ചിനീയറിംഗ്, ആൻഡ് ഇൻഫർമേഷൻ സയൻസ് എഞ്ചിനീയറിംഗ് ഉൾപ്പെടുന്നു. ${COLLEGE_INFO.placements.description}`,
-      en: collegeDescription
-    };
+    if (hasUnicode) {
+      // For Unicode keywords, check in original query (case-sensitive for Unicode)
+      // Also check if any part of the keyword appears in the query for better matching
+      if (query.includes(keyword)) {
+        return true;
+      }
+      // For multi-word Unicode keywords, check if all words appear (flexible matching)
+      const keywordWords = keyword.split(/\s+/).filter(w => w.length > 0);
+      if (keywordWords.length > 1) {
+        // Check if all significant words from keyword appear in query
+        const allWordsFound = keywordWords.every(word => query.includes(word));
+        if (allWordsFound) {
+          return true;
+        }
+      }
+      // Also check individual significant words from the keyword
+      const significantWords = keywordWords.filter(w => w.length > 2);
+      if (significantWords.length > 0) {
+        const anySignificantWordFound = significantWords.some(word => query.includes(word));
+        if (anySignificantWordFound && keywordWords.length <= 3) {
+          return true; // If keyword is short (1-3 words), any significant word match is enough
+        }
+      }
+      return false;
+    } else {
+      // For English keywords, check in normalized query (case-insensitive)
+      const keywordLower = keyword.toLowerCase();
+      return normalizedQuery.includes(keywordLower) ||
+             queryForKeywordCheck.includes(keywordLower) ||
+             query.toLowerCase().includes(keywordLower);
+    }
+  });
+  
+  // Also check for English college keywords
+  const hasEnglishCollegeKeyword = normalizedQuery.includes('college') || 
+      normalizedQuery.includes('institute') || 
+      normalizedQuery.includes('saividya') || 
+      normalizedQuery.includes('svit') ||
+      normalizedQuery.includes('established') || 
+      normalizedQuery.includes('year') ||
+      normalizedQuery.includes('vtu') || 
+      normalizedQuery.includes('aicte') ||
+      normalizedQuery.includes('naac') || 
+      normalizedQuery.includes('nba') ||
+      normalizedQuery.includes('bangalore');
+  
+  // Additional fallback: Check if query contains college-related Unicode characters from any Indian language
+  // This helps catch queries that might not match exact keywords but clearly ask about college
+  const hasCollegeUnicodePattern = (() => {
+    // Kannada: ಕಾಲೇಜು, ಕಾಲೇಜ್ patterns
+    if (/[\u0C95\u0CBE\u0CB2\u0CC7\u0C9C\u0CC1\u0C9C\u0CCD]/.test(query)) return true;
+    // Tamil: கல்லூரி patterns  
+    if (/[\u0B95\u0BB2\u0BCD\u0BB2\u0BC2\u0BB0\u0BBF]/.test(query)) return true;
+    // Telugu: కళాశాల patterns
+    if (/[\u0C15\u0C33\u0C3E\u0C36\u0C3E\u0C32]/.test(query)) return true;
+    // Hindi: कॉलेज patterns
+    if (/[\u0915\u0949\u0932\u0947\u091C]/.test(query)) return true;
+    // Malayalam: കോളേജ് patterns
+    if (/[\u0D15\u0D4B\u0D33\u0D47\u0D1C\u0D4D]/.test(query)) return true;
+    return false;
+  })();
+  
+  // If query is about college in general (not specifically about fees), return general college info
+  if (hasCollegeKeyword || hasEnglishCollegeKeyword || hasCollegeUnicodePattern) {
+    // Check if query is EXPLICITLY about fees - if so, skip general info and let fee check handle it
+    const explicitFeeKeywords = [
+      'fee', 'fees', 'tuition', 'cost', 'price', 'charges', 'payment',
+      'ಫೀಸ್', 'ಫೀಸು', 'ಶುಲ್ಕ', 'ದರ', 'ವೆಚ್ಚ', // Kannada fee-specific
+      'शुल्क', 'फीस', 'फी', 'दर', 'कीमत', 'मूल्य', 'लागत', // Hindi fee-specific
+      'கட்டணம்', 'கட்டண', 'விலை', 'செலவு', // Tamil fee-specific
+      'ఫీస్', 'ఫీసు', 'ఛార్జీ', 'దరం', 'ధర', 'వెచ్చం', // Telugu fee-specific
+      'ഫീസ്', 'ചാർജ്', 'ഫീ', 'നിരക്ക്', 'വില', 'ചെലവ്' // Malayalam fee-specific
+    ];
     
+    const isExplicitFeeQuery = explicitFeeKeywords.some(keyword => {
+      if (/[\u0900-\u097F\u0C00-\u0C7F\u0C80-\u0CFF\u0B80-\u0BFF\u0D00-\u0D7F]/.test(keyword)) {
+        return query.includes(keyword);
+      }
+      return queryForKeywordCheck.includes(keyword.toLowerCase());
+    });
+    
+    // Only return general college info if NOT explicitly asking about fees
+    if (!isExplicitFeeQuery) {
+      const collegeDescription = `${COLLEGE_INFO.name} (${COLLEGE_INFO.location}), established in ${COLLEGE_INFO.establishedYear}, is a ${COLLEGE_INFO.affiliation}-affiliated, ${COLLEGE_INFO.approval}-approved engineering college with ${COLLEGE_INFO.accreditation.naac} and ${COLLEGE_INFO.accreditation.nba} accreditation, ${COLLEGE_INFO.founderDescription}. The college offers various engineering programs including Computer Science Engineering, Mechanical Engineering, Civil Engineering, Electronics and Communication Engineering, and Information Science Engineering. ${COLLEGE_INFO.placements.description}`;
+      
+      const translations: Record<string, string> = {
+        hi: `${COLLEGE_INFO.name} (${COLLEGE_INFO.location}), ${COLLEGE_INFO.establishedYear} में स्थापित, ${COLLEGE_INFO.affiliation} से संबद्ध, ${COLLEGE_INFO.approval}-अनुमोदित इंजीनियरिंग कॉलेज है जिसमें ${COLLEGE_INFO.accreditation.naac} और ${COLLEGE_INFO.accreditation.nba} मान्यता है, ${COLLEGE_INFO.founderDescription}. कॉलेज विभिन्न इंजीनियरिंग कार्यक्रम प्रदान करता है जिसमें कंप्यूटर साइंस इंजीनियरिंग, मैकेनिकल इंजीनियरिंग, सिविल इंजीनियरिंग, इलेक्ट्रॉनिक्स और कम्युनिकेशन इंजीनियरिंग, और इंफॉर्मेशन साइंस इंजीनियरिंग शामिल हैं। ${COLLEGE_INFO.placements.description}`,
+        te: `${COLLEGE_INFO.name} (${COLLEGE_INFO.location}), ${COLLEGE_INFO.establishedYear}లో స్థాపించబడినది, ${COLLEGE_INFO.affiliation}-అనుబంధిత, ${COLLEGE_INFO.approval}-అనుమోదించబడిన ఇంజనీరింగ్ కళాశాల ${COLLEGE_INFO.accreditation.naac} మరియు ${COLLEGE_INFO.accreditation.nba} అక్రెడిటేషన్ కలిగి ఉంది, ${COLLEGE_INFO.founderDescription}. కళాశాల వివిధ ఇంజనీరింగ్ కార్యక్రమాలను అందిస్తుంది వీటిలో కంప్యూటర్ సైన్స్ ఇంజనీరింగ్, మెకానికల్ ఇంజనీరింగ్, సివిల్ ఇంజనీరింగ్, ఎలక్ట్రానిక్స్ మరియు కమ్యూనికేషన్ ఇంజనీరింగ్, మరియు ఇన్ఫర్మేషన్ సైన్స్ ఇంజనీరింగ్ ఉన్నాయి. ${COLLEGE_INFO.placements.description}`,
+        kn: `${COLLEGE_INFO.name} (${COLLEGE_INFO.location}), ${COLLEGE_INFO.establishedYear}ರಲ್ಲಿ ಸ್ಥಾಪಿಸಲ್ಪಟ್ಟಿದೆ, ${COLLEGE_INFO.affiliation}-ಸಂಬದ್ಧ, ${COLLEGE_INFO.approval}-ಅನುಮೋದಿತ ಇಂಜಿನಿಯರಿಂಗ್ ಕಾಲೇಜು ${COLLEGE_INFO.accreditation.naac} ಮತ್ತು ${COLLEGE_INFO.accreditation.nba} ಪ್ರಮಾಣೀಕರಣವನ್ನು ಹೊಂದಿದೆ, ${COLLEGE_INFO.founderDescription}. ಕಾಲೇಜು ವಿವಿಧ ಇಂಜಿನಿಯರಿಂಗ್ ಕಾರ್ಯಕ್ರಮಗಳನ್ನು ನೀಡುತ್ತದೆ ಇದರಲ್ಲಿ ಕಂಪ್ಯೂಟರ್ ಸೈನ್ಸ್ ಇಂಜಿನಿಯರಿಂಗ್, ಮೆಕ್ಯಾನಿಕಲ್ ಇಂಜಿನಿಯರಿಂಗ್, ಸಿವಿಲ್ ಇಂಜಿನಿಯರಿಂಗ್, ಎಲೆಕ್ಟ್ರಾನಿಕ್ಸ್ ಮತ್ತು ಕಮ್ಯುನಿಕೇಷನ್ ಇಂಜಿನಿಯರಿಂಗ್, ಮತ್ತು ಇನ್ಫರ್ಮೇಷನ್ ಸೈನ್ಸ್ ಇಂಜಿನಿಯರಿಂಗ್ ಸೇರಿವೆ. ${COLLEGE_INFO.placements.description}`,
+        ta: `${COLLEGE_INFO.name} (${COLLEGE_INFO.location}), ${COLLEGE_INFO.establishedYear}இல் நிறுவப்பட்டது, ${COLLEGE_INFO.affiliation}-இணைக்கப்பட்ட, ${COLLEGE_INFO.approval}-அனுமதிக்கப்பட்ட பொறியியல் கல்லூரி ${COLLEGE_INFO.accreditation.naac} மற்றும் ${COLLEGE_INFO.accreditation.nba} அங்கீகாரத்துடன், ${COLLEGE_INFO.founderDescription}. கல்லூரி பல்வேறு பொறியியல் திட்டங்களை வழங்குகிறது இதில் கணினி அறிவியல் பொறியியல், இயந்திர பொறியியல், சிவில் பொறியியல், மின்னணு மற்றும் தகவல்தொடர்பு பொறியியல், மற்றும் தகவல் அறிவியல் பொறியியல் அடங்கும். ${COLLEGE_INFO.placements.description}`,
+        ml: `${COLLEGE_INFO.name} (${COLLEGE_INFO.location}), ${COLLEGE_INFO.establishedYear} ൽ സ്ഥാപിച്ചത്, ${COLLEGE_INFO.affiliation}-ലിങ്ക് ചെയ്ത, ${COLLEGE_INFO.approval}-അനുവദിച്ച എഞ്ചിനീയറിംഗ് കോളേജ് ${COLLEGE_INFO.accreditation.naac} കൂടാതെ ${COLLEGE_INFO.accreditation.nba} അക്രെഡിറ്റേഷൻ, ${COLLEGE_INFO.founderDescription}. കോളേജ് വിവിധ എഞ്ചിനീയറിംഗ് പ്രോഗ്രാമുകൾ വാഗ്ദാനം ചെയ്യുന്നു ഇതിൽ കമ്പ്യൂട്ടർ സയൻസ് എഞ്ചിനീയറിംഗ്, മെക്കാനിക്കൽ എഞ്ചിനീയറിംഗ്, സിവിൽ എഞ്ചിനീയറിംഗ്, ഇലക്ട്രോണിക്സ് ആൻഡ് കമ്യൂണിക്കേഷൻ എഞ്ചിനീയറിംഗ്, ആൻഡ് ഇൻഫർമേഷൻ സയൻസ് എഞ്ചിനീയറിംഗ് ഉൾപ്പെടുന്നു. ${COLLEGE_INFO.placements.description}`,
+        en: collegeDescription
+      };
+      
+      return {
+        answer: translations[detectedLanguage] || translations.en,
+        type: 'general',
+        language: detectedLanguage
+      };
+    }
+  }
+  
+  // Check for fee queries (ONLY if explicitly about fees - strict detection)
+  const hasFeeKeyword = feeKeywordsInQuery.some(keyword => {
+    if (/[\u0900-\u097F\u0C00-\u0C7F\u0C80-\u0CFF\u0B80-\u0BFF\u0D00-\u0D7F]/.test(keyword)) {
+      // For Unicode keywords, check in original query
+      return query.includes(keyword);
+    }
+    return normalizedQuery.includes(keyword.toLowerCase()) ||
+           query.toLowerCase().includes(keyword.toLowerCase());
+  });
+  
+  const hasFeeTransliterated = /fee|fees|ph[iī]s|ph[iī]su/i.test(query) ||
+                                query.includes('ಫೀ') || query.includes('फी') ||
+                                query.includes('கட்டண') || query.includes('ఫీ') ||
+                                query.includes('ഫീ');
+  
+  // STRICT: Only return fee info if query explicitly mentions fees
+  // Don't return fees for general college queries
+  if (hasFeeKeyword || hasFeeTransliterated) {
+    console.log(`[processCollegeQuery] Fee query detected (hasFeeKeyword: ${hasFeeKeyword}, hasFeeTransliterated: ${hasFeeTransliterated}), calling formatFeeInfo with language: ${detectedLanguage}`);
+    const feeAnswer = formatFeeInfo(query, detectedLanguage);
+    console.log(`[processCollegeQuery] Fee answer length: ${feeAnswer.length}, first 100 chars: ${feeAnswer.substring(0, 100)}`);
     return {
-      answer: translations[detectedLanguage] || translations.en,
-      type: 'general',
+      answer: feeAnswer,
+      type: 'fee',
       language: detectedLanguage
     };
   }

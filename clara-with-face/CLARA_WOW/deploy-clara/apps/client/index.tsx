@@ -612,6 +612,10 @@ const App = () => {
     const [audioAmplitude, setAudioAmplitude] = useState(0);
     const [clientName, setClientName] = useState<string | null>(null);
     const [hasCollectedName, setHasCollectedName] = useState(false);
+    const hasGreetedRef = useRef(false); // Track if we've already greeted the user with introduction
+    const hasGreetedWithNameRef = useRef(false); // Track if we've already greeted with the user's name
+    const processedToolCallsRef = useRef<Set<string>>(new Set()); // Track processed tool calls to prevent duplicates
+    const lastResponseLanguageRef = useRef<string | null>(null); // Track the language of the last response to prevent duplicates
     const [currentLocationCard, setCurrentLocationCard] = useState<{ location: Location } | null>(null);
     const detectedLanguageRef = useRef('en');
     const [audioDiagnostics, setAudioDiagnostics] = useState({
@@ -1749,6 +1753,20 @@ const App = () => {
             const now = Date.now();
             const isSameAsLast = cleanText === lastTTSTextRef.current;
             
+            // CRITICAL FIX: Stop any AI audio before starting TTS to prevent overlap
+            if (sourcesRef.current.size > 0) {
+                console.log('[TTS] Stopping AI audio sources before TTS to prevent overlap');
+                sourcesRef.current.forEach(source => {
+                    try {
+                        source.stop();
+                    } catch (e) {
+                        // Source may already be stopped
+                    }
+                });
+                sourcesRef.current.clear();
+                nextStartTimeRef.current = 0;
+            }
+
             // Wait for any existing TTS to complete before starting new one
             if (isTTSActiveRef.current && ttsQueueRef.current) {
                 console.log('[TTS] Waiting for current TTS to complete...');
@@ -2386,6 +2404,23 @@ const App = () => {
                 console.log('[Tool Call] Function calls:', functionCalls);
                 
                 for (const fc of functionCalls) {
+                    // Create unique ID for this tool call to prevent duplicate processing
+                    const toolCallId = `${fc.id || Date.now()}-${fc.name}`;
+                    
+                    // Skip if already processed
+                    if (processedToolCallsRef.current.has(toolCallId)) {
+                        console.log('[Tool Call] Skipping duplicate tool call:', toolCallId);
+                        continue;
+                    }
+                    
+                    // Mark as processed
+                    processedToolCallsRef.current.add(toolCallId);
+                    
+                    // Clear processed calls after 5 seconds to allow new calls
+                    setTimeout(() => {
+                        processedToolCallsRef.current.delete(toolCallId);
+                    }, 5000);
+                    
                     console.log('[Tool Call] Processing:', fc.name, 'with args:', fc.args);
                     if (fc.name === 'initiateVideoCall') {
                         // Check if in demo mode
@@ -2470,9 +2505,35 @@ const App = () => {
                             if (apiDetectedLang !== 'en' && hasUnicodeChars) {
                                 // Answer is already in the target language, instruct Gemini to use it as-is
                                 console.log(`[College Info] Answer is already in ${apiDetectedLang}, instructing Gemini to use as-is`);
-                                responseWithLanguageHint = `[ABSOLUTE LANGUAGE REQUIREMENT - HIGHEST PRIORITY: The user asked in ${languageName} (${apiDetectedLang}). The following text is ALREADY in ${languageName}. You MUST respond by copying this text EXACTLY as written. DO NOT translate. DO NOT modify. DO NOT add English. DO NOT use any other language. Simply repeat the following text exactly:\n\n${collegeInfo}\n\nREMEMBER: Respond ONLY with the text above, in ${languageName}, without any changes.]`;
+                                responseWithLanguageHint = `[🚨 ABSOLUTE REQUIREMENT - NO EXCEPTIONS: The user asked in ${languageName} (${apiDetectedLang}). The following text is ALREADY in ${languageName}. 
+
+CRITICAL INSTRUCTIONS:
+1. Copy this text EXACTLY as written - word for word
+2. DO NOT add ANY English words or explanations
+3. DO NOT translate or modify anything
+4. DO NOT add a summary or additional information
+5. DO NOT respond in English after this
+6. Respond ONLY with the text below, nothing else
+
+TEXT TO REPEAT (${languageName} ONLY):
+${collegeInfo}
+
+REMEMBER: This is your COMPLETE response. Do NOT add anything else. Do NOT respond in English. Do NOT provide additional explanations. Just repeat the text above exactly.]`;
                             } else {
-                                responseWithLanguageHint = `[CRITICAL LANGUAGE INSTRUCTION: The user asked in ${languageName} (${apiDetectedLang}). You MUST respond ONLY in ${languageName}. Do NOT use English. Do NOT translate to any other language. Do NOT use Indonesian. The following information is already in ${languageName} - use it exactly as provided and respond ONLY in ${languageName}:\n\n${collegeInfo}`;
+                                responseWithLanguageHint = `[🚨 CRITICAL LANGUAGE INSTRUCTION - NO EXCEPTIONS: The user asked in ${languageName} (${apiDetectedLang}). 
+
+ABSOLUTE REQUIREMENTS:
+1. You MUST respond ONLY in ${languageName}
+2. DO NOT use ANY English words
+3. DO NOT translate to any other language
+4. DO NOT add English explanations or summaries
+5. DO NOT provide additional information in English
+6. Use the information below exactly as provided
+
+INFORMATION (${languageName} ONLY):
+${collegeInfo}
+
+REMEMBER: Respond ONLY in ${languageName}. Do NOT add English. Do NOT provide additional responses. This is your complete answer.]`;
                             }
                             
                             // Send tool response to Gemini
@@ -2518,11 +2579,26 @@ const App = () => {
             // Handle real-time transcription updates (user) – accumulate full text
             if (message.serverContent?.inputTranscription) {
                 const newText = message.serverContent.inputTranscription.text || '';
-                inputAccumRef.current = appendDelta(inputAccumRef.current, newText);
                 
-                // Detect language from user input and update state
-                if (newText) {
-                    const languageAnalysis = analyzeLanguage(inputAccumRef.current, detectedLanguageRef.current, detectedLanguageRef.current);
+                // CRITICAL FIX: Clean speech recognition errors and false positives
+                // Filter out common false positives that shouldn't be in user input
+                const cleanedText = newText
+                    .replace(/\b(gemini|clara|ai assistant|bot|assistant)\b/gi, '') // Remove common false positives
+                    .replace(/\s+/g, ' ') // Normalize whitespace
+                    .trim();
+                
+                // Only accumulate if there's meaningful content after cleaning
+                if (cleanedText.length > 0) {
+                    inputAccumRef.current = appendDelta(inputAccumRef.current, cleanedText);
+                } else if (newText.length > 0 && newText.toLowerCase().trim() !== 'gemini') {
+                    // Log when we filter out text to help debug (but not for just "gemini")
+                    console.log('[Speech Recognition] Filtered out likely error:', newText);
+                }
+                
+                // Detect language from user input and update state (use cleaned text)
+                const textToAnalyze = cleanedText.length > 0 ? inputAccumRef.current : '';
+                if (textToAnalyze) {
+                    const languageAnalysis = analyzeLanguage(textToAnalyze, detectedLanguageRef.current, detectedLanguageRef.current);
                     const detectedLang = languageAnalysis.lang;
                     if (detectedLang !== detectedLanguage) {
                         setDetectedLanguage(detectedLang);
@@ -2534,37 +2610,63 @@ const App = () => {
                         languageConfidence: languageAnalysis.confidence,
                     }));
                 }
-                // Update or create user message in real-time
-                setMessages(prev => {
-                    let lastUserMsgIndex = -1;
-                    for (let i = prev.length - 1; i >= 0; i--) {
-                        if (prev[i].sender === 'user' && !prev[i].isFinal) {
-                            lastUserMsgIndex = i;
-                            break;
+                // Update or create user message in real-time (only if there's meaningful content)
+                const displayText = inputAccumRef.current.trim();
+                if (displayText.length > 0) {
+                    setMessages(prev => {
+                        let lastUserMsgIndex = -1;
+                        for (let i = prev.length - 1; i >= 0; i--) {
+                            if (prev[i].sender === 'user' && !prev[i].isFinal) {
+                                lastUserMsgIndex = i;
+                                break;
+                            }
                         }
-                    }
-                    if (lastUserMsgIndex >= 0) {
-                        const updated = [...prev];
-                        updated[lastUserMsgIndex] = {
-                            ...updated[lastUserMsgIndex],
-                            text: inputAccumRef.current,
+                        if (lastUserMsgIndex >= 0) {
+                            const updated = [...prev];
+                            updated[lastUserMsgIndex] = {
+                                ...updated[lastUserMsgIndex],
+                                text: displayText,
+                                isFinal: false,
+                                timestamp: updated[lastUserMsgIndex].timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                            };
+                            return updated;
+                        }
+                        return [...prev, {
+                            sender: 'user',
+                            text: displayText,
                             isFinal: false,
-                            timestamp: updated[lastUserMsgIndex].timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                        };
-                        return updated;
-                    }
-                    return [...prev, {
-                        sender: 'user',
-                        text: inputAccumRef.current,
-                        isFinal: false,
-                        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                    }];
-                });
+                            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                        }];
+                    });
+                }
             }
 
             // Handle output transcription (Clara) – accumulate full text
             if (message.serverContent?.outputTranscription) {
                 const newText = message.serverContent.outputTranscription.text || '';
+                
+                // CRITICAL FIX: Prevent duplicate English responses after non-English responses
+                if (newText && detectedLanguageRef.current && detectedLanguageRef.current !== 'en') {
+                    // Check if this new text is primarily English (when user asked in non-English)
+                    const textAnalysis = analyzeLanguage(newText, 'en', 'en');
+                    if (textAnalysis.lang === 'en' && textAnalysis.confidence > 0.7) {
+                        // Check if we've already received a response in the correct language
+                        if (lastResponseLanguageRef.current === detectedLanguageRef.current && outputAccumRef.current.length > 0) {
+                            // We already have a response in the correct language - this English one is a duplicate
+                            console.warn('[Language] Blocking duplicate English response after', detectedLanguageRef.current, 'response');
+                            console.warn('[Language] Blocked text:', newText.substring(0, 100));
+                            // Don't accumulate this English text - skip it
+                            return;
+                        }
+                    } else if (textAnalysis.lang === detectedLanguageRef.current) {
+                        // This is a response in the correct language - mark it
+                        lastResponseLanguageRef.current = detectedLanguageRef.current;
+                    }
+                } else if (newText && detectedLanguageRef.current === 'en') {
+                    // User asked in English - mark English response
+                    lastResponseLanguageRef.current = 'en';
+                }
+                
                 outputAccumRef.current = appendDelta(outputAccumRef.current, newText);
                 setMessages(prev => {
                     let lastClaraMsgIndex = -1;
@@ -2580,7 +2682,8 @@ const App = () => {
                             ...updated[lastClaraMsgIndex],
                             text: outputAccumRef.current,
                             isFinal: false,
-                            timestamp: updated[lastClaraMsgIndex].timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                            timestamp: updated[lastClaraMsgIndex].timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                            language: detectedLanguageRef.current || 'en' // Store detected language
                         };
                         return updated;
                     }
@@ -2588,7 +2691,8 @@ const App = () => {
                         sender: 'clara',
                         text: outputAccumRef.current,
                         isFinal: false,
-                        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                        language: detectedLanguageRef.current || 'en' // Store detected language
                     }];
                 });
             }
@@ -2601,6 +2705,8 @@ const App = () => {
 
             // Handle turn completion - finalize messages and flush accumulators
             if (message.serverContent?.turnComplete) {
+                // Reset response language tracking for next turn
+                lastResponseLanguageRef.current = null;
                 
                 setMessages(prev => {
                     const updated = [...prev];
@@ -2613,35 +2719,71 @@ const App = () => {
                         const userText = inputAccumRef.current || updated[lastUserIndex].text;
                         updated[lastUserIndex] = { ...updated[lastUserIndex], text: userText, isFinal: true };
                         
-                        // Extract client name if not collected yet
+                        // Extract client name if not collected yet - STRICT VALIDATION
                         if (!hasCollectedName && userText) {
-                            // Simple name extraction: look for "my name is", "I am", "I'm", or just take first few words
+                            // Blacklist of words that should NEVER be considered names
+                            const nameBlacklist = [
+                                'gemini', 'clara', 'ai', 'assistant', 'bot', 'hello', 'hi', 'hey',
+                                'yes', 'no', 'ok', 'okay', 'sure', 'thanks', 'thank', 'please',
+                                'help', 'information', 'college', 'fees', 'fee', 'staff', 'professor',
+                                'what', 'who', 'where', 'when', 'why', 'how', 'tell', 'give', 'show',
+                                'the', 'is', 'are', 'was', 'were', 'this', 'that', 'these', 'those',
+                                'can', 'could', 'will', 'would', 'should', 'may', 'might', 'must'
+                            ];
+                            
+                            // Only extract name if there's a clear name pattern - be more strict
                             const namePatterns = [
-                                /(?:my name is|i am|i'm|call me|this is)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/i,
-                                /^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)$/,
+                                /(?:my name is|i am|i'm|call me|this is|name is)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/i,
                             ];
                             
                             let extractedName = null;
                             for (const pattern of namePatterns) {
                                 const match = userText.match(pattern);
                                 if (match && match[1]) {
-                                    extractedName = match[1].trim();
-                                    break;
+                                    const candidate = match[1].trim().toLowerCase();
+                                    // Validate: must not be in blacklist and must look like a name
+                                    if (!nameBlacklist.includes(candidate) && 
+                                        candidate.length >= 2 && 
+                                        /^[a-z]+(?:\s+[a-z]+)*$/.test(candidate)) {
+                                        extractedName = match[1].trim();
+                                        break;
+                                    }
                                 }
                             }
                             
-                            // If no pattern match, try taking first 1-3 words as name
-                            if (!extractedName) {
-                                const words = userText.trim().split(/\s+/);
-                                if (words.length <= 3 && words[0] && words[0].length > 1) {
-                                    extractedName = words.slice(0, Math.min(3, words.length)).join(' ');
-                                }
-                            }
+                            // CRITICAL: Do NOT extract name from random words - only from explicit patterns
+                            // Removed the fallback that takes first few words - this was causing "gemini" issue
                             
                             if (extractedName && extractedName.length > 0 && extractedName.length < 50) {
-                                setClientName(extractedName);
-                                setHasCollectedName(true);
-                                console.log('[Name] Extracted client name:', extractedName);
+                                // Final validation: check against blacklist one more time
+                                const nameLower = extractedName.toLowerCase();
+                                const isBlacklisted = nameBlacklist.some(blacklisted => 
+                                    nameLower === blacklisted || nameLower.includes(blacklisted) || blacklisted.includes(nameLower)
+                                );
+                                
+                                if (!isBlacklisted) {
+                                    setClientName(extractedName);
+                                    setHasCollectedName(true);
+                                    console.log('[Name] Extracted client name:', extractedName);
+                                    
+                                    // Greet with name only once after name is collected
+                                    if (!hasGreetedWithNameRef.current) {
+                                        const greetingText = `Hello ${extractedName}, how can I help you?`;
+                                        const greetingMessage = { 
+                                            sender: 'clara', 
+                                            text: greetingText, 
+                                            isFinal: true, 
+                                            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                                            language: detectedLanguageRef.current || 'en'
+                                        };
+                                        setMessages(prev => [...prev, greetingMessage]);
+                                        console.log('[Greeting] Speaking name greeting via TTS');
+                                        speakWithTTS(greetingText, detectedLanguageRef.current || 'en');
+                                        hasGreetedWithNameRef.current = true; // Mark as greeted with name - don't greet again
+                                    }
+                                } else {
+                                    console.log('[Name] Rejected blacklisted name candidate:', extractedName);
+                                }
                             }
                         }
                         
@@ -2707,9 +2849,14 @@ const App = () => {
                             break; 
                         }
                     }
-                    if (lastClaraIndex >= 0) {
-                        updated[lastClaraIndex] = { ...updated[lastClaraIndex], text: outputAccumRef.current || updated[lastClaraIndex].text, isFinal: true };
-                    }
+                        if (lastClaraIndex >= 0) {
+                            updated[lastClaraIndex] = { 
+                                ...updated[lastClaraIndex], 
+                                text: outputAccumRef.current || updated[lastClaraIndex].text, 
+                                isFinal: true,
+                                language: detectedLanguageRef.current || updated[lastClaraIndex].language || 'en' // Store detected language
+                            };
+                        }
                     return updated;
                 });
                 // clear for next turn
@@ -2733,11 +2880,32 @@ const App = () => {
             // Only skip if: College query (uses TTS) or TTS is actively speaking (different audio system)
             // DO NOT block AI audio chunks - they queue automatically via nextStartTimeRef scheduling
             const base64EncodedAudioString = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
-            const isTTSActive = window.speechSynthesis && (window.speechSynthesis.speaking || window.speechSynthesis.pending);
             
             // Play AI audio if available and not in demo mode
-            // CRITICAL: Removed hasActiveAudio check - allows sequential queuing of chunks from same stream
-            if (base64EncodedAudioString && !isDemoMode && !isTTSActive) {
+            // CRITICAL FIX: Stop TTS before playing AI audio to prevent overlap
+            const isTTSActive = window.speechSynthesis && (window.speechSynthesis.speaking || window.speechSynthesis.pending);
+            if (isTTSActive) {
+                console.log('[AI Audio] Stopping TTS before playing AI audio to prevent overlap');
+                window.speechSynthesis.cancel();
+                activeUtterancesRef.current = [];
+                // Wait for TTS to fully stop
+                await new Promise((resolve) => {
+                    let checkCount = 0;
+                    const checkStop = () => {
+                        if (!window.speechSynthesis.speaking && !window.speechSynthesis.pending) {
+                            resolve(undefined);
+                        } else if (checkCount < 20) {
+                            checkCount++;
+                            setTimeout(checkStop, 50);
+                        } else {
+                            resolve(undefined);
+                        }
+                    };
+                    checkStop();
+                });
+            }
+            
+            if (base64EncodedAudioString && !isDemoMode) {
                 setStatus('Responding...');
                 
                 try {
@@ -2818,8 +2986,9 @@ const App = () => {
                     if (outputAccumRef.current?.trim()) {
                         console.log('[TTS] AI audio playback failed, falling back to TTS');
                         const responseText = outputAccumRef.current.trim();
-                        const responseAnalysis = analyzeLanguage(responseText, detectedLanguageRef.current, detectedLanguageRef.current);
-                        const finalLang = responseAnalysis.lang !== 'en' ? responseAnalysis.lang : (detectedLanguageRef.current || 'en');
+                        // CRITICAL: Always use the detected language from user input
+                        const finalLang = detectedLanguageRef.current || 'en';
+                        console.log(`[Language] TTS fallback language: ${finalLang} (using user input language)`);
                         setTimeout(() => {
                             speakWithTTS(responseText, finalLang);
                         }, 100);
@@ -2873,13 +3042,14 @@ const App = () => {
                         
                         if (!hasActiveAudio && responseText) {
                             console.log('[TTS] Using TTS fallback (no AI audio received or audio playback completed/failed)');
-                            const responseAnalysis = analyzeLanguage(responseText, detectedLanguageRef.current, detectedLanguageRef.current);
-                            const finalLang = responseAnalysis.lang !== 'en' ? responseAnalysis.lang : (detectedLanguageRef.current || 'en');
-                            console.log(`[Language] TTS language: ${finalLang} (response: ${responseAnalysis.lang} ${(responseAnalysis.confidence * 100).toFixed(1)}%, user: ${detectedLanguageRef.current})`);
+                            // CRITICAL: Always use the detected language from user input, not from response text
+                            // This ensures TTS matches the user's input language exactly
+                            const finalLang = detectedLanguageRef.current || 'en';
+                            console.log(`[Language] TTS language: ${finalLang} (using user input language, not response analysis)`);
                             setAudioDiagnostics(prev => ({
                                 ...prev,
                                 detectedLanguage: finalLang,
-                                languageConfidence: responseAnalysis.confidence,
+                                languageConfidence: 1.0, // High confidence since we're using user's input language
                             }));
                             speakWithTTS(responseText, finalLang);
                         } else if (hasActiveAudio) {
@@ -2916,16 +3086,28 @@ const App = () => {
             console.warn('API Key not found, entering demo mode');
             setIsDemoMode(true);
             // In demo mode, show a message but don't initialize session
-            if (shouldGreet) {
-                const greetingText = preChatDetailsRef.current?.name 
-                    ? `Hi ${preChatDetailsRef.current.name}! I'm Clara, your friendly AI receptionist! I'm so excited to help you today! How can I assist you?`
-                    : "Hi there! I'm Clara, your friendly AI receptionist! I'm so excited to help you today! How can I assist you?";
-                const greetingMessage = { sender: 'clara', text: greetingText, isFinal: true, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
-                setMessages([greetingMessage]);
+            if (shouldGreet && !hasGreetedRef.current && !hasGreetedWithNameRef.current) {
+                const nameFromPreChat = preChatDetailsRef.current?.name;
+                if (nameFromPreChat && !hasCollectedName) {
+                    // Name provided in pre-chat, set it and greet
+                    setClientName(nameFromPreChat);
+                    setHasCollectedName(true);
+                    const greetingText = `Hello ${nameFromPreChat}, how can I help you?`;
+                    const greetingMessage = { sender: 'clara', text: greetingText, isFinal: true, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
+                    setMessages([greetingMessage]);
+                    console.log('[Greeting] Speaking demo mode greeting with name via TTS');
+                    speakWithTTS(greetingText, detectedLanguageRef.current || 'en');
+                    hasGreetedWithNameRef.current = true;
+                } else if (!nameFromPreChat) {
+                    // No name, ask for it
+                    const greetingText = "Hello, I am Clara, the AI receptionist of Sai Vidya Institute of Technology. Please provide your name.";
+                    const greetingMessage = { sender: 'clara', text: greetingText, isFinal: true, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
+                    setMessages([greetingMessage]);
+                    console.log('[Greeting] Speaking demo mode introduction via TTS');
+                    speakWithTTS(greetingText, detectedLanguageRef.current || 'en');
+                    hasGreetedRef.current = true;
+                }
                 setStatus('Demo mode: Click the microphone to speak or use the demo call button.');
-                // Speak the greeting in demo mode too
-                console.log('[Greeting] Speaking demo mode greeting via TTS');
-                speakWithTTS(greetingText, detectedLanguageRef.current || 'en');
             }
             return;
         } else {
@@ -2969,23 +3151,42 @@ const App = () => {
         
         const systemInstruction = `You are CLARA, the AI receptionist for Sai Vidya Institute of Technology (SVIT).
 
-**CRITICAL LANGUAGE RULE - HIGHEST PRIORITY:**
-You MUST respond in the EXACT SAME LANGUAGE as the user's question. This is a strict requirement.
+**🚨 CRITICAL LANGUAGE RULE - ABSOLUTE HIGHEST PRIORITY - NO EXCEPTIONS:**
+You MUST respond in the EXACT SAME LANGUAGE as the user's input. This is a STRICT, NON-NEGOTIABLE requirement.
 
-**Language Matching Rules:**
-1. If the user asks in English → You MUST respond ONLY in English
-2. If the user asks in Hindi → You MUST respond ONLY in Hindi  
-3. If the user asks in Telugu → You MUST respond ONLY in Telugu
-4. If the user asks in Kannada → You MUST respond ONLY in Kannada
-5. If the user asks in Tamil → You MUST respond ONLY in Tamil
-6. If the user asks in Malayalam → You MUST respond ONLY in Malayalam
+**🔒 STRICT Language Matching Rules:**
+1. **English Input (en)** → You MUST respond 100% in English. NO other language words allowed.
+2. **Kannada Input (kn)** → You MUST respond 100% in Kannada. NO English words. NO mixing.
+3. **Tamil Input (ta)** → You MUST respond 100% in Tamil. NO English words. NO mixing.
+4. **Telugu Input (te)** → You MUST respond 100% in Telugu. NO English words. NO mixing.
+5. **Hindi Input (hi)** → You MUST respond 100% in Hindi. NO English words. NO mixing.
+6. **Malayalam Input (ml)** → You MUST respond 100% in Malayalam. NO English words. NO mixing.
+7. **Marathi Input (mr)** → You MUST respond 100% in Marathi. NO English words. NO mixing.
 
-**FORBIDDEN:** You MUST NEVER respond in Indonesian (Bahasa Indonesia). If the user asks in English, do NOT translate to Indonesian. Always match the user's language exactly.
+**❌ FORBIDDEN:**
+- NEVER mix languages in a single response
+- NEVER use English words when user asked in an Indian language
+- NEVER respond in Indonesian (Bahasa Indonesia)
+- NEVER translate English input to another language
+- NEVER add English explanations to non-English responses
+- NEVER generate multiple responses (one in correct language, another in English)
+- NEVER add English summaries after tool responses in other languages
+- NEVER provide additional information in English after responding in another language
+- If you respond in Kannada/Tamil/Telugu/Hindi/etc., that is your ONLY response - do NOT add English
 
-Examples:
-- User: "who is Nagashree" (English) → Respond: "Dr. Nagashree N (Doctor) teaches..." (English ONLY)
-- User: "कॉलेज की जानकारी दो" (Hindi) → Respond in Hindi ONLY
-- User: "కళాశాల సమాచారం ఇవ్వండి" (Telugu) → Respond in Telugu ONLY
+**✅ CORRECT Examples:**
+- User: "who is Nagashree" (English) → You: "Dr. Nagashree N (Doctor) teaches..." (English ONLY, 100% English)
+- User: "ಕಾಲೇಜಿನ ಫೀಸ್ ಎಷ್ಟು?" (Kannada) → You: "ಸಾಯಿ ವಿದ್ಯಾ ಕಾಲೇಜಿನ ಫೀಸ್ ರಚನೆ..." (Kannada ONLY, 100% Kannada, NO English)
+- User: "கல்லூரி கட்டணம் என்ன?" (Tamil) → You: "சாய் வித்யா கல்லூரி கட்டணம்..." (Tamil ONLY, 100% Tamil, NO English)
+- User: "కళాశాల ఫీస్ ఎంత?" (Telugu) → You: "సాయి విద్యా కళాశాల ఫీస్..." (Telugu ONLY, 100% Telugu, NO English)
+
+**🎯 Current User Language:** The user's current input language is: **${detectedLanguageRef.current || 'en'}**. 
+
+**CRITICAL INSTRUCTION:** 
+- If user language is "${detectedLanguageRef.current || 'en'}", you MUST respond 100% in ${detectedLanguageRef.current || 'en'}.
+- If user switches to a different language, detect it and respond in that new language.
+- NEVER mix languages. NEVER add English to non-English responses.
+- The language code "${detectedLanguageRef.current || 'en'}" is the EXACT language you must use for this response.
 
 **CRITICAL: COLLEGE INFORMATION TOOL**
 You MUST use the getCollegeInformation tool for ANY college-related query. Examples:
@@ -2996,7 +3197,16 @@ You MUST use the getCollegeInformation tool for ANY college-related query. Examp
 - "college information right now" → call getCollegeInformation
 - Questions about: college, fee, fees, staff, professor, prof, dr, doctor, placement, department, course, admission, campus, institute, SVIT, Sai Vidya, trustees, or any staff name (Lakshmi, Anitha, Nagashree, etc.)
 
-**IMPORTANT:** When you receive information from getCollegeInformation tool, pay attention to the language instruction in the response. The tool response will tell you what language the user asked in. You MUST respond in that EXACT language. Do NOT translate to Indonesian or any other language.
+**🚨 CRITICAL TOOL RESPONSE RULES:**
+When you receive information from getCollegeInformation tool:
+1. The tool response contains the EXACT text you must use
+2. If the tool response is in ${detectedLanguageRef.current || 'en'}, you MUST respond ONLY in ${detectedLanguageRef.current || 'en'}
+3. DO NOT add English explanations after a non-English tool response
+4. DO NOT provide additional information in a different language
+5. DO NOT summarize or translate the tool response
+6. Simply repeat the tool response text EXACTLY as provided
+7. If tool response is in Kannada/Tamil/Telugu/Hindi/etc., respond ONLY in that language - NO English allowed
+8. ONE response only - do NOT generate multiple responses
 
 **Video Calls:** Use initiateVideoCall tool when user wants to call a staff member.
 
@@ -3004,11 +3214,12 @@ You MUST use the getCollegeInformation tool for ANY college-related query. Examp
 
 **Context:** Client Name: ${clientName || name || 'Not provided yet'}, Purpose: ${purpose || 'Not specified'}, Staff: ${staffHint}
 
-**IMPORTANT:** When the conversation first starts and you introduce yourself, you MUST:
-1. First say: "Hello. I am Clara, the AI receptionist for Sai Vidya Institute of Technology."
-2. Then immediately ask: "May I have your name, please?"
-3. Once the user provides their name, acknowledge it and use their name throughout the entire conversation.
-4. If the client name is already known (${clientName || 'not set'}), you can greet them by name, otherwise ask for it.`;
+**IMPORTANT GREETING RULES:**
+1. You should ONLY greet the user ONCE when they first provide their name.
+2. After greeting with their name, DO NOT greet again. Simply continue helping them.
+3. When responding to requests, use their name naturally like "Hello ${clientName || 'guest'}, how can I help you?" but only if it's the first response after name collection.
+4. For subsequent responses, just answer their questions directly without repeating greetings.
+5. If the client name is already known (${clientName || 'not set'}), use it naturally in responses but don't greet repeatedly.`;
         
         const messageHandler = createMessageHandler();
         
@@ -3018,14 +3229,45 @@ You MUST use the getCollegeInformation tool for ANY college-related query. Examp
                 onopen: async () => {
                     setStatus('Clara is ready!');
                     
-                    // Send introduction and ask for name if requested
-                    if (shouldGreet) {
-                        if (!hasCollectedName) {
+                    // Check if name was provided in preChatDetails
+                    const nameFromPreChat = preChatDetailsRef.current?.name;
+                    if (nameFromPreChat && !hasCollectedName) {
+                        setClientName(nameFromPreChat);
+                        setHasCollectedName(true);
+                    }
+                    
+                    // Send introduction and ask for name if requested - but only once
+                    if (shouldGreet && !hasGreetedRef.current && !hasGreetedWithNameRef.current) {
+                        if (hasCollectedName && clientName) {
+                            // Name already collected (from pre-chat or previous interaction), greet with name
+                            const greetingText = `Hello ${clientName}, how can I help you?`;
+                            const greetingMessage = { sender: 'clara', text: greetingText, isFinal: true, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), language: detectedLanguageRef.current || 'en' };
+                            setMessages([greetingMessage]);
+                            
+                            // Speak the greeting immediately via TTS
+                            console.log('[Greeting] Speaking name greeting via TTS');
+                            speakWithTTS(greetingText, detectedLanguageRef.current || 'en');
+                            
+                            try {
+                                if (sessionPromiseRef.current) {
+                                    const session = await sessionPromiseRef.current;
+                                    if (session) {
+                                        // Also send to session so Gemini knows the context
+                                        session.sendRealtimeInput({ text: greetingText });
+                                    }
+                                }
+                            } catch (error) {
+                                console.error('Error sending greeting to session:', error);
+                            }
+                            
+                            // Mark as greeted with name
+                            hasGreetedWithNameRef.current = true;
+                        } else if (!hasCollectedName) {
                             // First time: introduce and ask for name
-                            const introductionText = "Hello. I am Clara, the AI receptionist for Sai Vidya Institute of Technology. May I have your name, please?";
+                            const introductionText = "Hello, I am Clara, the AI receptionist of Sai Vidya Institute of Technology. Please provide your name.";
                             
                             // Set message and speak immediately
-                            const greetingMessage = { sender: 'clara', text: introductionText, isFinal: true, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
+                            const greetingMessage = { sender: 'clara', text: introductionText, isFinal: true, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), language: detectedLanguageRef.current || 'en' };
                             setMessages([greetingMessage]);
                             
                             // Speak the greeting immediately via TTS
@@ -3043,31 +3285,9 @@ You MUST use the getCollegeInformation tool for ANY college-related query. Examp
                             } catch (error) {
                                 console.error('Error sending introduction to session:', error);
                             }
-                        } else {
-                            // Name already collected: greet with name
-                            const greetingText = clientName 
-                                ? `Hi ${clientName}! I'm Clara, your friendly AI receptionist! I'm so excited to help you today! How can I assist you?`
-                                : "Hi there! I'm Clara, your friendly AI receptionist! I'm so excited to help you today! How can I assist you?";
                             
-                            // Set message and speak immediately
-                            const greetingMessage = { sender: 'clara', text: greetingText, isFinal: true, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
-                            setMessages([greetingMessage]);
-                            
-                            // Speak the greeting immediately via TTS
-                            console.log('[Greeting] Speaking greeting via TTS');
-                            speakWithTTS(greetingText, detectedLanguageRef.current || 'en');
-                            
-                            try {
-                                if (sessionPromiseRef.current) {
-                                    const session = await sessionPromiseRef.current;
-                                    if (session) {
-                                        // Also send to session so Gemini knows the context
-                                        session.sendRealtimeInput({ text: greetingText });
-                                    }
-                                }
-                            } catch (error) {
-                                console.error('Error sending greeting to session:', error);
-                            }
+                            // Mark as greeted with introduction
+                            hasGreetedRef.current = true;
                         }
                     }
                 },
@@ -3115,6 +3335,13 @@ You MUST use the getCollegeInformation tool for ANY college-related query. Examp
         setPreChatDetails(details);
         // Immediately update ref so it's available synchronously before initializeSession
         preChatDetailsRef.current = details;
+        
+        // If name is provided in pre-chat, set it immediately
+        if (details.name && !hasCollectedName) {
+            setClientName(details.name);
+            setHasCollectedName(true);
+        }
+        
         setShowPreChatModal(false);
         // Ensure view is set to facial expressions
         setView('facial');
@@ -3124,15 +3351,22 @@ You MUST use the getCollegeInformation tool for ANY college-related query. Examp
             await initializeSession(true); // true = send greeting
         } catch (error) {
             console.error('Error initializing greeting:', error);
-            // Fallback to text greeting if audio fails
-            const welcomeText = details.name 
-                ? `Hi ${details.name}! I'm Clara, your friendly AI receptionist! I'm so excited to help you today! How can I assist you?` 
-                : "Hi there! I'm Clara, your friendly AI receptionist! I'm so excited to help you today! How can I assist you?";
-            const greetingMessage = { sender: 'clara', text: welcomeText, isFinal: true, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
-            setMessages([greetingMessage]);
-            // Speak the greeting via TTS even in fallback
-            console.log('[Greeting] Speaking fallback greeting via TTS');
-            speakWithTTS(welcomeText, detectedLanguageRef.current || 'en');
+            // Fallback to text greeting if audio fails - but only if not already greeted
+            if (!hasGreetedRef.current && !hasGreetedWithNameRef.current) {
+                const welcomeText = details.name 
+                    ? `Hello ${details.name}, how can I help you?` 
+                    : "Hello, I am Clara, the AI receptionist of Sai Vidya Institute of Technology. Please provide your name.";
+                const greetingMessage = { sender: 'clara', text: welcomeText, isFinal: true, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
+                setMessages([greetingMessage]);
+                // Speak the greeting via TTS even in fallback
+                console.log('[Greeting] Speaking fallback greeting via TTS');
+                speakWithTTS(welcomeText, detectedLanguageRef.current || 'en');
+                if (details.name) {
+                    hasGreetedWithNameRef.current = true;
+                } else {
+                    hasGreetedRef.current = true;
+                }
+            }
         }
     };
 
@@ -3388,12 +3622,15 @@ You MUST use the getCollegeInformation tool for ANY college-related query. Examp
             await initializeSession(true); // true = send greeting/introduction
         } catch (error) {
             console.error('Error initializing session:', error);
-            // Fallback greeting if session initialization fails
-            const fallbackGreeting = "Hello. I am Clara, the AI receptionist for Sai Vidya Institute of Technology. May I have your name, please?";
-            const greetingMessage = { sender: 'clara', text: fallbackGreeting, isFinal: true, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
-            setMessages([greetingMessage]);
-            console.log('[Greeting] Speaking fallback greeting via TTS');
-            speakWithTTS(fallbackGreeting, detectedLanguageRef.current || 'en');
+            // Fallback greeting if session initialization fails - but only if not already greeted
+            if (!hasGreetedRef.current && !hasGreetedWithNameRef.current) {
+                const fallbackGreeting = "Hello, I am Clara, the AI receptionist of Sai Vidya Institute of Technology. Please provide your name.";
+                const greetingMessage = { sender: 'clara', text: fallbackGreeting, isFinal: true, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
+                setMessages([greetingMessage]);
+                console.log('[Greeting] Speaking fallback greeting via TTS');
+                speakWithTTS(fallbackGreeting, detectedLanguageRef.current || 'en');
+                hasGreetedRef.current = true;
+            }
         }
     };
 
