@@ -16,6 +16,11 @@ export default defineConfig(({ mode }) => {
     return {
       server: {
         host: '0.0.0.0',
+        cors: true,
+        headers: {
+          'Cross-Origin-Embedder-Policy': 'require-corp',
+          'Cross-Origin-Opener-Policy': 'same-origin',
+        },
       },
       plugins: [react()],
       define: {
@@ -29,6 +34,8 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
-      }
+      },
+      // Ensure worklet files are served with correct MIME type
+      assetsInclude: ['**/*.js'],
     };
 });

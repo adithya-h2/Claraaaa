@@ -646,22 +646,41 @@ const App = () => {
         // Always try to load the module - it's safe to call addModule multiple times
         // and we need to ensure it's loaded for this specific AudioContext
         try {
-            // Use worklet from public folder - this is accessible in both dev and production
-            const workletUrl = '/worklets/pcm-processor.js';
+            // Try multiple possible paths for the worklet file
+            const workletPaths = [
+                '/worklets/pcm-processor.js',
+                `${window.location.origin}/worklets/pcm-processor.js`,
+                './worklets/pcm-processor.js',
+            ];
             
-            console.log('[Mic] Loading AudioWorklet module from:', workletUrl);
-            await ctx.audioWorklet.addModule(workletUrl);
-            audioWorkletReadyRef.current = true;
-            console.log('[Mic] AudioWorklet processor loaded successfully');
-            return true;
-        } catch (error: any) {
-            // Check if error is because module is already loaded (some browsers allow this)
-            if (error.message && error.message.includes('already been loaded')) {
-                console.log('[Mic] AudioWorklet module already loaded for this context');
-                audioWorkletReadyRef.current = true;
-                return true;
+            let loaded = false;
+            for (const workletUrl of workletPaths) {
+                try {
+                    console.log('[Mic] Attempting to load AudioWorklet module from:', workletUrl);
+                    await ctx.audioWorklet.addModule(workletUrl);
+                    audioWorkletReadyRef.current = true;
+                    console.log('[Mic] AudioWorklet processor loaded successfully from:', workletUrl);
+                    loaded = true;
+                    break;
+                } catch (pathError: any) {
+                    // Check if error is because module is already loaded (some browsers allow this)
+                    if (pathError.message && pathError.message.includes('already been loaded')) {
+                        console.log('[Mic] AudioWorklet module already loaded for this context');
+                        audioWorkletReadyRef.current = true;
+                        loaded = true;
+                        break;
+                    }
+                    console.warn('[Mic] Failed to load from', workletUrl, ':', pathError);
+                    // Try next path
+                }
             }
             
+            if (!loaded) {
+                throw new Error('Failed to load AudioWorklet from all attempted paths');
+            }
+            
+            return true;
+        } catch (error: any) {
             console.warn('[Mic] Failed to load AudioWorklet module:', error);
             console.warn('[Mic] Falling back to ScriptProcessorNode (deprecated but functional)');
             audioWorkletReadyRef.current = false;
