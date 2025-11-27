@@ -1745,67 +1745,14 @@ const App = () => {
     };
 
     // Helper function to speak text using TTS (browser's speechSynthesis)
-    /**
-     * Global guards for TTS - separate for audible and fallback to prevent blocking.
-     * 
-     * __ttsRunningAudible: Prevents multiple audible TTS from playing simultaneously.
-     * __ttsRunningFallback: Tracks muted fallback messages (doesn't block audible TTS).
-     * 
-     * This separation ensures that muted fallback messages don't prevent primary responses
-     * from playing audio, while still allowing us to track and log fallback messages.
-     */
-    if (typeof window !== 'undefined') {
-        (window as any).__ttsRunningAudible = (window as any).__ttsRunningAudible || false;
-        (window as any).__ttsRunningFallback = (window as any).__ttsRunningFallback || false;
-    }
-
-    /**
-     * speakWithTTS - Text-to-Speech wrapper with optional audio muting for fallback messages.
-     * 
-     * @param text - The text to speak
-     * @param language - Language code (e.g., 'en', 'kn', 'ta')
-     * @param options - Optional configuration
-     * @param options.playAudio - If false, message is muted but still appears in UI/logs/audit.
-     *                           Default: true (backward compatibility)
-     * 
-     * Usage:
-     * - Primary responses: speakWithTTS(text, lang) or speakWithTTS(text, lang, { playAudio: true })
-     * - Fallback/error messages: speakWithTTS(text, lang, { playAudio: false })
-     * 
-     * Muted fallback messages:
-     * - Still appear in chat transcript/UI
-     * - Still logged in console with [TTS][fallback][muted] prefix
-     * - Still tracked in audit logs
-     * - Do NOT produce audible sound
-     * - Do NOT block subsequent audible TTS
-     * 
-     * To re-enable audio for fallbacks, change playAudio: false to playAudio: true
-     * in the fallback call sites (search for "playAudio: false").
-     */
-    const speakWithTTS = (text: string, language?: string, options?: { playAudio?: boolean }) => {
-        const playAudio = options?.playAudio !== false; // Default to true for backward compatibility
-        
+    const speakWithTTS = (text: string, language?: string) => {
         const speak = async () => {
             if (!('speechSynthesis' in window)) {
                 console.warn('[TTS] Speech synthesis not supported');
                 return;
             }
             
-            // Use appropriate guard based on playAudio
-            if (playAudio) {
-                if ((window as any).__ttsRunningAudible) {
-                    console.log('[TTS] Audible TTS already running, skipping');
-                    return;
-                }
-                (window as any).__ttsRunningAudible = true;
-            } else {
-                // Fallback messages can queue multiple times (text-only)
-                // This guard doesn't block audible TTS, only tracks muted fallbacks
-                (window as any).__ttsRunningFallback = true;
-            }
-            
-            const logPrefix = playAudio ? '[TTS]' : '[TTS][fallback][muted]';
-            console.log(`${logPrefix} speakWithTTS called with text length:`, text?.length || 0, 'language:', language || 'auto', 'playAudio:', playAudio);
+            console.log('[TTS] speakWithTTS called with text length:', text?.length || 0, 'language:', language || 'auto');
     
             // Clean text - remove markdown formatting
             const cleanText = text
@@ -1990,8 +1937,7 @@ const App = () => {
                 const utterance = new SpeechSynthesisUtterance(sentence);
                 utterance.rate = profile.rate;
                 utterance.pitch = profile.pitch;
-                // Mute fallback messages: set volume to 0 if playAudio is false
-                utterance.volume = playAudio ? profile.volume : 0;
+                utterance.volume = profile.volume;
                 utterance.lang = (sentenceVoice?.lang || speechLangCode).toLowerCase();
 
                 if (sentenceVoice) {
@@ -2169,12 +2115,7 @@ const App = () => {
                 } catch (error) {
                     console.error('[TTS] Error in TTS sequence:', error);
                 } finally {
-                    // Ensure cleanup - release appropriate guard
-                    if (playAudio) {
-                        (window as any).__ttsRunningAudible = false;
-                    } else {
-                        (window as any).__ttsRunningFallback = false;
-                    }
+                    // Ensure cleanup
                     isTTSActiveRef.current = false;
                     activeUtterancesRef.current = [];
                     setStatus('Click the microphone to speak');
@@ -2247,8 +2188,7 @@ const App = () => {
             // If no API key, use TTS instead
             if (!apiKey) {
                 console.warn('No API key for Zephyr voice, falling back to TTS');
-                // Mute fallback TTS - this is an error recovery case
-                speakWithTTS(cleanText, language, { playAudio: false });
+                speakWithTTS(cleanText, language);
                 return;
             }
             
@@ -2317,8 +2257,7 @@ const App = () => {
                 console.warn('[Zephyr] Falling back to browser TTS:', reason);
                 closeSessionSafely();
                 setTimeout(() => {
-                    // Mute fallback TTS - this is an error recovery case
-                    speakWithTTS(cleanText, language, { playAudio: false });
+                    speakWithTTS(cleanText, language);
                 }, 50);
             };
             
@@ -2475,8 +2414,7 @@ const App = () => {
         } catch (error) {
             console.error('Error in Zephyr voice generation:', error);
             setStatus('Click the microphone to speak');
-            // Mute fallback TTS - this is an error recovery case
-            speakWithTTS(text, language, { playAudio: false });
+            speakWithTTS(text, language);
         }
     };
 
@@ -3109,8 +3047,7 @@ REMEMBER: Respond ONLY in ${languageName}. Do NOT add English. Do NOT provide ad
                         const finalLang = detectedLanguageRef.current || 'en';
                         console.log(`[Language] TTS fallback language: ${finalLang} (using user input language)`);
                         setTimeout(() => {
-                            // Mute fallback TTS - this is when AI audio decode fails
-                            speakWithTTS(responseText, finalLang, { playAudio: false });
+                            speakWithTTS(responseText, finalLang);
                         }, 100);
                     }
                 }
@@ -3171,8 +3108,7 @@ REMEMBER: Respond ONLY in ${languageName}. Do NOT add English. Do NOT provide ad
                                 detectedLanguage: finalLang,
                                 languageConfidence: 1.0, // High confidence since we're using user's input language
                             }));
-                            // Mute fallback TTS - this is when no AI audio was received
-                            speakWithTTS(responseText, finalLang, { playAudio: false });
+                            speakWithTTS(responseText, finalLang);
                         } else if (hasActiveAudio) {
                             console.log('[TTS] AI audio is playing, skipping TTS fallback');
                         } else {
@@ -3481,11 +3417,11 @@ When you receive information from getCollegeInformation tool:
                 const welcomeText = details.name 
                     ? `Hello ${details.name}, how can I help you?` 
                     : "Hello, I am Clara, the AI receptionist of Sai Vidya Institute of Technology. Please provide your name.";
-                const greetingMessage = { sender: 'clara', text: welcomeText, isFinal: true, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), audioMuted: true };
+                const greetingMessage = { sender: 'clara', text: welcomeText, isFinal: true, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
                 setMessages([greetingMessage]);
-                // Mute fallback greeting TTS - this is an error recovery case
-                console.log('[Greeting] Speaking fallback greeting via TTS (muted)');
-                speakWithTTS(welcomeText, detectedLanguageRef.current || 'en', { playAudio: false });
+                // Speak the greeting via TTS even in fallback
+                console.log('[Greeting] Speaking fallback greeting via TTS');
+                speakWithTTS(welcomeText, detectedLanguageRef.current || 'en');
                 if (details.name) {
                     hasGreetedWithNameRef.current = true;
                 } else {
@@ -3750,11 +3686,10 @@ When you receive information from getCollegeInformation tool:
             // Fallback greeting if session initialization fails - but only if not already greeted
             if (!hasGreetedRef.current && !hasGreetedWithNameRef.current) {
                 const fallbackGreeting = "Hello, I am Clara, the AI receptionist of Sai Vidya Institute of Technology. Please provide your name.";
-                const greetingMessage = { sender: 'clara', text: fallbackGreeting, isFinal: true, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), audioMuted: true };
+                const greetingMessage = { sender: 'clara', text: fallbackGreeting, isFinal: true, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
                 setMessages([greetingMessage]);
-                // Mute fallback greeting TTS - this is an error recovery case
-                console.log('[Greeting] Speaking fallback greeting via TTS (muted)');
-                speakWithTTS(fallbackGreeting, detectedLanguageRef.current || 'en', { playAudio: false });
+                console.log('[Greeting] Speaking fallback greeting via TTS');
+                speakWithTTS(fallbackGreeting, detectedLanguageRef.current || 'en');
                 hasGreetedRef.current = true;
             }
         }
