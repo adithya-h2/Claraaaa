@@ -1,4 +1,4 @@
-# Claraaaa
+# CLARA - The AI Receptionist
 
 A next-gen software project by Adithya H, 3rd-year Computer Science student (Data Science specialization, Sai Vidya Institute of Technology, Bangalore). Built for hackathons, portfolio, and technical growth.
 
