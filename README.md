@@ -1,9 +1,9 @@
 # CLARA - The AI Receptionist
 
-A next-gen software project by Adithya H, 3rd-year Computer Science student (Data Science specialization, Sai Vidya Institute of Technology, Bangalore). Built for hackathons, portfolio, and technical growth.
+A next-gen software project by The Quantum Bugs, 3rd-year Computer Science student (Data Science specialization, Sai Vidya Institute of Technology, Bangalore). Built for hackathons, portfolio, College automation and technical growth.
 
 ## 🚀 Overview
-Claraaaa is designed to demonstrate strong Data Science fundamentals, full-stack development, and API integration skills. It features robust architecture, clean code, and scalable solutions ideal for industry and open-source.
+Clara is designed to demonstrate strong Data Science fundamentals, full-stack development, and API integration skills. It features robust architecture, clean code, and scalable solutions ideal for industry and open-source.
 
 ## 🌟 Features
 - Advanced data handling and analytics workflows
@@ -25,7 +25,7 @@ cd Claraaaa
 ```
 
 ## 👤 Author
-**Adithya H**  
+**The Quantum Bugs**  
 3rd Year, Computer Science & Data Science, Sai Vidya Institute of Technology, Bangalore  
 Nextcloud internship: Jitsi Videobridge widget
 
