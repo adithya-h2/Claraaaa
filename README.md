@@ -366,7 +366,7 @@ This project is private and proprietary. All rights reserved.
 
 <div align="center">
 
-**Built with ❤️ by The Quantum Bugs*
+*Built with ❤️ by The Quantum Bugs*
 
 [Report Bug](https://github.com/your-repo/issues) • [Request Feature](https://github.com/your-repo/issues) • [Documentation](#-documentation)
 
